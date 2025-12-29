@@ -1,0 +1,105 @@
+@startuml
+title Обработка регистрации пользователя (Backend)
+
+start
+
+:Получить POST /api/v1/auth/register запрос;
+
+if (Content-Type = application/json?) then (нет)
+  :Вернуть 400 Bad Request\n"Invalid Content-Type";
+  stop
+else (да)
+endif
+
+if (Тело запроса валидно как JSON?) then (нет)
+  :Вернуть 400 Bad Request\n"Invalid JSON";
+  stop
+else (да)
+endif
+
+:Извлечь поля:\nfirstName, lastName,\nusername, password,\nrecaptchaToken;
+
+if (Все обязательные поля присутствуют?) then (нет)
+  :Вернуть 400 Bad Request\n"Missing required fields"\nс details по отсутствующим полям;
+  stop
+else (да)
+endif
+
+note right
+  **Валидация полей**
+end note
+
+if (firstName: длина ≥2 и ≤50,\nтолько буквы/пробел/дефис?) then (нет)
+  :Добавить ошибку в details["firstName"];
+endif
+
+if (lastName: длина ≥2 и ≤50,\nтолько буквы/пробел/дефис?) then (нет)
+  :Добавить ошибку в details["lastName"];
+endif
+
+if (username: длина 3-30,\nтолько a-zA-Z0-9_. ?) then (нет)
+  :Добавить ошибку в details["username"];
+endif
+
+if (password: длина ≥8\nи содержит ≥1 строчную, ≥1 заглавную,\n≥1 цифру, ≥1 спецсимвол?) then (нет)
+  :Добавить ошибку в details["password"];
+endif
+
+if (Есть ошибки валидации полей?) then (да)
+  :Вернуть 400 Bad Request\nVALIDATION_ERROR\nс details;
+  stop
+else (нет)
+endif
+
+note right
+  **Проверка reCAPTCHA**
+end note
+
+:Отправить recaptchaToken\nна верификацию в Google reCAPTCHA API;
+
+if (reCAPTCHA прошла успешно?) then (нет)
+  :Вернуть 400 Bad Request\nRECAPTCHA_FAILED\n"Please verify you are not a robot";
+  stop
+else (да)
+endif
+
+note right
+  **Проверка уникальности username**
+end note
+
+:Поиск пользователя по username в БД;
+
+if (Пользователь с таким username\nуже существует?) then (да)
+  :Вернуть 400 Bad Request\nUSERNAME_TAKEN\n"User exists!"\nс details["username"];
+  stop
+else (нет)
+endif
+
+note right
+  **Создание пользователя**
+end note
+
+:Хэшировать password\n(bcrypt или аналог);
+
+:Создать запись в БД:\nfirstName, lastName,\nusername, hashedPassword,\ncreatedAt = now(),\nstatus = ACTIVE;
+
+if (Сохранение в БД успешно?) then (нет)
+  :Логировать ошибку;
+  :Вернуть 500 Internal Server Error\nINTERNAL_ERROR;
+  stop
+else (да)
+endif
+
+:Сгенерировать/получить userId;
+
+:Подготовить ответ:\n{\n  "userId": <id>,\n  "username": <username>,\n  "message": "User registered successfully"\n};
+
+:Вернуть 200 OK\nс успешным ответом;
+
+note right
+  Опционально:отправить welcome e-mail,записать событие в аналитику
+end note
+
+stop
+
+@enduml
